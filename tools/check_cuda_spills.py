@@ -33,13 +33,13 @@ import shutil
 import subprocess
 import sys
 
-# Kernels with a stack frame at cbfd5b92, measured with CUDA 13.1 (V13.1.80) for sm_86 and sm_120 (Release): the ones
+# Kernels with a stack frame at 011c9e60 (v0.2.2), measured with CUDA 13.1 (V13.1.80) for sm_86 and sm_120 (Release): the ones
 # that keep a per-thread array in local memory, and the ones ptxas spills.  Key: the demangled kernel name without its
 # template arguments and parameter list (namespace kept; matched exactly), so every instantiation of a template kernel
 # shares one entry.  Value: per sm_, the allowed (STACK, LOCAL) bytes - the measured maximum, so any growth fails; an
 # sm_ that is absent allows nothing.  The line above each entry says what the array is, or what spilled (ptxas -v:
 # spill stores / spill loads at the register count it settled on).  A spill is a finding, not a licence: the entries
-# document the state of cbfd5b92 so the gate can hold the line from here.
+# document the state of 011c9e60 so the gate can hold the line from here.
 ALLOWED = {
     # float values[V] (V = NE / 32 = 8): the lane's logits for the top-k selection (no spill)
     "q36k::k_route_group": {"sm_86": (32, 0)},
@@ -115,8 +115,10 @@ ALLOWED = {
     "strata::kernels::{anonymous}::native_down_multi_kernel": {"sm_86": (64, 0), "sm_120": (48, 0)},
     # spill 4 / 4 at 80 (sm_86) / 48 (sm_120) registers under __launch_bounds__(256), no local array
     "strata::kernels::{anonymous}::native_gu_kernel": {"sm_86": (8, 0), "sm_120": (8, 0)},
-    # const int off[1..4] / float s[1..4] per entry group, plus spill 56 / 64 (sm_86), 52 / 64 (sm_120)
-    "strata::kernels::{anonymous}::native_gu_multi_kernel": {"sm_86": (96, 0), "sm_120": (112, 0)},
+    # const int off[1..4] / float s[1..4] per entry group; since v0.2.2 the 8-lane trellis rows (TG 144 / 145, STAGE_GRID)
+    # keep row_dot_160_sub8's float p[4][NC] too: 144 B at 77-80 registers with no spill, or 128 B with spill 28 / 32 at
+    # 48 (sm_86); the other instantiations spill 56 / 64 (sm_86), 52 / 64 (sm_120)
+    "strata::kernels::{anonymous}::native_gu_multi_kernel": {"sm_86": (144, 0), "sm_120": (112, 0)},
     # const int off[1..3] / float a[1..3] / b[1..3] per entry group and gv[GRP_NC] / uv[GRP_NC], plus spill 88 / 140 at
     # the 64-register cap of __launch_bounds__(512)
     "strata::kernels::{anonymous}::native_gu_swiglu_kernel": {"sm_120": (64, 0)},
